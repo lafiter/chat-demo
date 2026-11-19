@@ -311,8 +311,9 @@ export const toRequestMessages = (
   let previousReminder: string | undefined
   const appendReminder = (reminder: string | undefined) => {
     // 仅在当前分支首次出现或内容变化时插入快照；缺少快照的消息保持原有内容。
+    // GLM 等仅支持 user/assistant/system 角色，用 user 消息注入快照。
     if (reminder && reminder !== previousReminder) {
-      messages.push({ role: 'latest_reminder', content: reminder })
+      messages.push({ role: 'user', content: reminder })
       previousReminder = reminder
     }
   }

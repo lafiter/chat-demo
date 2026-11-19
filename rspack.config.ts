@@ -17,15 +17,27 @@ const cssLoader = {
 }
 
 type ConfigOptions = {
-  /** 公开 API 的地址，注入为 __API_ORIGIN__ */
+  /** 公开 API 的地址，注入为 __API_ORIGIN__；默认空串走同源（BFF 托管或开发代理） */
   apiOrigin?: string
+  /** 默认 API Key，注入为 __API_KEY__，设置里未保存时使用；BFF 模式下为占位符 */
+  apiKey?: string
+  /** 默认模型 ID，注入为 __MODEL__ */
+  model?: string
+  /** 开发模式下 API 请求的代理目标（职称评聘助手 BFF） */
+  proxyTarget?: string
   /** 开发服务器配置，支持本地接口代理 */
   devServer?: Configuration['devServer']
 }
 
+/** 需要经开发服务器转发到 BFF 的路径前缀（聊天、Key 校验、语音、助手配置） */
+const API_PROXY_PATHS = ['/anthropic', '/models', '/v1', '/config'] as const
+
 /** 创建构建配置，支持自定义 API 地址和开发服务器选项 */
 export const createConfig = ({
-  apiOrigin = 'https://api.deepseek.com',
+  apiOrigin = '',
+  apiKey = 'intranet',
+  model = 'glm-5.3',
+  proxyTarget = 'http://localhost:8787',
   devServer,
 }: ConfigOptions = {}): Configuration => ({
   mode: dev ? 'development' : 'production',
@@ -80,13 +92,25 @@ export const createConfig = ({
       scriptLoading: 'defer',
       meta: { 'application-version': version },
     }),
-    new rspack.DefinePlugin({ __API_ORIGIN__: JSON.stringify(apiOrigin) }),
+    new rspack.DefinePlugin({
+      // 远端 API 不返回跨域响应头，开发模式注入空地址改走开发服务器同源代理
+      __API_ORIGIN__: JSON.stringify(dev ? '' : apiOrigin),
+      __API_KEY__: JSON.stringify(apiKey),
+      __MODEL__: JSON.stringify(model),
+    }),
     new rspack.CopyRspackPlugin({
       patterns: [{ from: path.resolve(root, 'LICENSE'), to: 'LICENSE', toType: 'file' }],
     }),
   ],
   performance: { hints: false },
-  devServer: { port: 8090, ...devServer },
+  devServer: {
+    // 监听全部网卡，局域网设备可经本机 IP 访问（192.168.1.18:8090）
+    host: '0.0.0.0',
+    port: 8090,
+    // 浏览器同源请求按路径前缀转发到 BFF，规避跨域限制
+    proxy: [{ context: [...API_PROXY_PATHS], target: proxyTarget, changeOrigin: true }],
+    ...devServer,
+  },
 })
 
 // eslint-disable-next-line import/no-default-export

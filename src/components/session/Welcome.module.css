@@ -20,12 +20,25 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 21px;
+  margin-bottom: 12px;
   font-size: 24px;
   line-height: 32px;
   font-weight: 600;
   text-align: center;
   color: var(--dsw-alias-label-primary);
+}
+
+/* 无副标题时保持原有间距 */
+.greeting:last-child {
+  margin-bottom: 21px;
+}
+
+.subtitle {
+  margin-bottom: 21px;
+  font-size: 14px;
+  line-height: 22px;
+  text-align: center;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 @media (max-width: 439px) {

@@ -88,7 +88,8 @@ const initialThemePreference = (): ThemePreference => {
 const initialTtsVoice = (): TtsVoice => (read(KEYS.ttsVoice) === 'tide' ? 'tide' : 'stella')
 
 export const useSettings = create<Settings>(() => ({
-  apiKey: read(KEYS.apiKey),
+  // 未在设置中保存过时使用构建期注入的默认 Key（见 rspack.config.ts）
+  apiKey: read(KEYS.apiKey) ?? (__API_KEY__ || null),
   locale: initialLocale(),
   location: initialLocation(),
   themePreference: initialThemePreference(),

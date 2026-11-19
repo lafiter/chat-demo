@@ -1,0 +1,24 @@
+{
+  "name": "zcps-assistant-server",
+  "description": "职称评聘问答助手 BFF 服务端",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^4.21.2",
+    "multer": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.3.0",
+    "@types/node": "~20.9.2",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.2"
+  }
+}

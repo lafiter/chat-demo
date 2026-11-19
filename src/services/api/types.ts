@@ -4,7 +4,7 @@
  * 声明 deepseek_web_search / deepseek_read_url 或设置 safety_check.level 为 high 时进入扩展模式。
  */
 
-export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro'
+export type ChatModel = 'deepseek-flash' | 'deepseek-v4-pro' | 'glm-5.3'
 
 // ---------- 响应：内容块 ----------
 
@@ -155,8 +155,6 @@ export type AssistantBlockParam =
 
 /** 末尾 assistant 自动触发继续生成，无需 prefix 字段 */
 export type MessageParam =
-  /** Chat Engine 扩展角色，位于对应 user 前；需服务端支持 latest_reminder。 */
-  | { role: 'latest_reminder'; content: string }
   | { role: 'user'; content: string | (FileBlockParam | TextBlockParam)[] }
   | { role: 'assistant'; content: AssistantBlockParam[] }
 
