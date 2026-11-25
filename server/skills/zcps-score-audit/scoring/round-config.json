@@ -1,0 +1,19 @@
+{
+  "_doc": "本轮测算参数（每年评审季更新）。BFF 的 calc_raw_score 与 scripts/build_queries.py 共用；改这个文件即可，不用改代码。",
+  "cutoffYeji": "2026-10-31",
+  "cutoffGzl": "2026-06",
+  "cqYearMax": "2025",
+  "rzCutoff": "2026-10",
+  "formJxgzl": "11981c45708c482ca98370e31ee99568",
+  "caps": {
+    "_doc": "《量化办法》各类上限（原始分不封顶，封顶口径按此截断）；岗位业绩取两项、各上限 gwItem",
+    "jcf": 15,
+    "gzlf": 25,
+    "gzzlf": 10,
+    "zygzf": 30,
+    "gw": 20,
+    "gwItem": 10
+  },
+  "rosterCsv": "../references/摸底测算_原始分_20261117.csv",
+  "rosterLabel": "摸底测算表（2026-11-17）"
+}

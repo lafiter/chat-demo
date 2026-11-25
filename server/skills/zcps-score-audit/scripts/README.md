@@ -1,12 +1,16 @@
 # 批量测算脚本使用说明
 
+单人或几十人的测算直接在助手里问即可（服务端算分引擎与本脚本读同一份 SQL 模板）；本脚本是整批出 Excel 的离线流程。
+
+**SQL 模板与本轮参数都在 `../scoring/`**（`sql-templates.json`、`round-config.json`），与服务端 `calc_raw_score` 共用：改口径只改这两个文件，脚本和服务端同时生效。
+
 ## 流程（三步）
 
 ### ① 生成 7 个批量 SQL
 
 ```bash
 python scripts/build_queries.py <当轮名单.xlsx> <工作目录>
-# 产出 工作目录/b1.sql ~ b7.sql；轮次参数（截止日期等）改 build_queries.py 顶部 CONFIG
+# 产出 工作目录/b1.sql ~ b7.sql；轮次参数（截止日期等）在 ../scoring/round-config.json
 ```
 
 - b1 学历 ｜ b2 工作质量 ｜ b3 本职工作量+党政 ｜ b4 学生管理（含培训 khdc空=系数1）
@@ -22,7 +26,7 @@ customSql=SQL 文件内容, limit=100, idempotencyKey 每次唯一）→ 轮询 
 
 ```bash
 python scripts/merge_final.py <当轮名单.xlsx> <工作目录> <输出.xlsx>
-# 任职年限截止月与 build_queries.py CONFIG 同步修改（RZ_CUTOFF）
+# 任职年限截止月自动取自 ../scoring/round-config.json，不用手工同步
 ```
 
 输出：三级分类表头 + 44 列明细 + 总分前置 + 主系列→竞聘等级→总分倒序 + 两位小数，附口径说明 sheet。
@@ -30,7 +34,7 @@ python scripts/merge_final.py <当轮名单.xlsx> <工作目录> <输出.xlsx>
 
 ## 年度维护（每年评审季更新一次）
 
-1. `build_queries.py` 顶部 CONFIG：业绩/工作量截止、出勤年度、教学工作量 form_code；
-2. `merge_final.py` 的 RZ_CUTOFF；
+1. `../scoring/round-config.json`：业绩/工作量截止、任职年限截止月、出勤年度、教学工作量 form_code；
+2. 计分规则本身变了才改 `../scoring/sql-templates.json`（服务端算分同时生效），改完跑 `npm --prefix server run regress` 与摸底表比对；
 3. SKILL.md 固定口径表中的默认 0 项名单、重名清单（人员会变）；
-4. 名单 Excel 用当轮新文件；重跑一遍 ①②③。
+4. 名单 Excel 用当轮新文件；同时把 `round-config.json` 的 `rosterCsv` 指向当轮摸底表；重跑一遍 ①②③。

@@ -12,3 +12,4 @@ tmp/
 server/chatlogs/
 server/uploads/
 .idea/
+__pycache__/

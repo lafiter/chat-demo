@@ -20,7 +20,10 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
-RZ_CUTOFF = '2026-10'  # 任职年限截止月（与 build_queries.py CONFIG 同步更新）
+# 任职年限截止月：取自 scoring/round-config.json（与 build_queries.py 共用同一份参数，不用再手工同步）
+SCORING_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'scoring')
+with open(os.path.join(SCORING_DIR, 'round-config.json'), encoding='utf-8') as _f:
+    RZ_CUTOFF = json.load(_f)['rzCutoff']
 
 def r2(x):
     return float(Decimal(str(x)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))

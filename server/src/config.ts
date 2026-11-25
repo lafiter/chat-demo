@@ -49,12 +49,26 @@ const loadPersona = (): { greeting: string; subtitle: string; body: string } => 
 
 const persona = loadPersona()
 
+/** 上游模型协议：决定 upstream 层如何组装请求与解析流式响应 */
+export type ModelProtocol = 'anthropic' | 'openai-chat' | 'openai-responses'
+
+const PROTOCOLS: readonly ModelProtocol[] = ['anthropic', 'openai-chat', 'openai-responses']
+
+const protocolEnv = env('MODEL_PROTOCOL', 'anthropic').toLowerCase()
+const modelProtocol: ModelProtocol = PROTOCOLS.includes(protocolEnv as ModelProtocol)
+  ? (protocolEnv as ModelProtocol)
+  : 'anthropic'
+
 export const config = {
   port: Number(env('PORT', '8787')),
-  glmApiKey: env('GLM_API_KEY'),
-  glmModel: env('GLM_MODEL', 'glm-5.3'),
-  /** 上游根地址；Anthropic 兼容端点为 `${upstreamRoot}/anthropic/v1` */
-  upstreamRoot: env('GLM_UPSTREAM_ROOT', 'https://open.bigmodel.cn/api').replace(/\/+$/, ''),
+  /** 模型服务凭据与端点（厂商无关）；旧 GLM_* 变量名作回退兼容 */
+  modelApiKey: env('MODEL_API_KEY', env('GLM_API_KEY')),
+  modelId: env('MODEL_ID', env('GLM_MODEL')),
+  modelProtocol,
+  /** 完整端点地址（各厂商路径不统一，不做拼接） */
+  modelEndpoint: env('MODEL_ENDPOINT'),
+  /** 单轮输出上限（思考型模型的 thinking 也计入，偏小会被截断成空回答） */
+  modelMaxTokens: Number(env('MODEL_MAX_TOKENS', '16384')),
   mcpUrl: env('MCP_URL'),
   mcpToken: env('MCP_TOKEN'),
   mcpToolTimeoutMs: Number(env('MCP_TOOL_TIMEOUT_SEC', '600')) * 1000,
@@ -71,7 +85,9 @@ export const config = {
 export const assertConfig = (): void => {
   const missing = (
     [
-      ['GLM_API_KEY', config.glmApiKey],
+      ['MODEL_API_KEY', config.modelApiKey],
+      ['MODEL_ID', config.modelId],
+      ['MODEL_ENDPOINT', config.modelEndpoint],
       ['MCP_URL', config.mcpUrl],
       ['MCP_TOKEN', config.mcpToken],
       ['SITE_ID', config.siteId],
@@ -80,6 +96,10 @@ export const assertConfig = (): void => {
   ).filter(([, value]) => !value)
   if (missing.length > 0) {
     console.error(`[config] 缺少必填配置：${missing.map(([key]) => key).join('、')}，请检查 server/.env`)
+    process.exit(1)
+  }
+  if (!PROTOCOLS.includes(config.modelProtocol)) {
+    console.error(`[config] MODEL_PROTOCOL 仅支持：${PROTOCOLS.join(' | ')}`)
     process.exit(1)
   }
 }

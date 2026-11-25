@@ -69,6 +69,12 @@ src/
     speech/            Audio recording and read-aloud playback
   utils/               Shared utilities
 ```
+1.给定人员名单测算分数。
+2.核对人员分数明细。
+3.导出统计报名人员信息。
+4.导入一部分数据用于计算。
+5.导出量化表。
+6.公示。
 
 ## License
 

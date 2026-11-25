@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "regress": "tsx scripts/regress-scoring.ts",
+    "test:guards": "tsx scripts/test-scoring-guards.ts",
+    "e2e": "tsx scripts/e2e-assistant.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

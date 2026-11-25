@@ -1,6 +1,5 @@
 import path from 'node:path'
 import express from 'express'
-import type { Request, Response } from 'express'
 import multer from 'multer'
 import { handleMessages } from './agent.js'
 import { assertConfig, config, serverRoot } from './config.js'
@@ -16,35 +15,6 @@ import { connectMcp, selfCheck } from './mcp.js'
  * - 静态托管 ../dist（生产模式同源部署）
  */
 
-/** 透传到 GLM 上游：注入真实 key，请求体原样转发 */
-const proxyUpstream = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${config.glmApiKey}`,
-      'x-api-key': config.glmApiKey,
-    }
-    if (typeof req.headers['content-type'] === 'string') {
-      headers['Content-Type'] = req.headers['content-type']
-    }
-    const raw = Buffer.isBuffer(req.body) ? new Uint8Array(req.body) : undefined
-    const body = raw && raw.length > 0 ? raw : undefined
-    const response = await fetch(`${config.upstreamRoot}${req.path}`, {
-      method: req.method,
-      headers,
-      body,
-    })
-    res.status(response.status)
-    const contentType = response.headers.get('content-type')
-    if (contentType) {
-      res.setHeader('Content-Type', contentType)
-    }
-    res.send(Buffer.from(await response.arrayBuffer()))
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    res.status(502).json({ error: { type: 'api_error', message: `上游请求失败：${message}` } })
-  }
-}
-
 const main = async (): Promise<void> => {
   assertConfig()
   try {
@@ -59,10 +29,9 @@ const main = async (): Promise<void> => {
   const app = express()
   const upload = multer({ limits: { fileSize: 32 * 1024 * 1024 } })
 
-  // 附件走 BFF 本地 Files API（GLM 端点无此接口），语音仍透传
+  // 附件走 BFF 本地 Files API；语音（/v1/tools）此前透传上游已无对应端点，路由移除
   app.post('/anthropic/v1/files', upload.single('file'), uploadFileHandler)
   app.delete('/anthropic/v1/files/:id', deleteFileHandler)
-  app.post('/v1/tools/:tool', express.raw({ type: () => true, limit: '64mb' }), proxyUpstream)
 
   app.use(express.json({ limit: '4mb' }))
   // 前端按 Anthropic 路径约定请求 /anthropic/v1/messages；裸 /v1/messages 一并支持
@@ -72,8 +41,8 @@ const main = async (): Promise<void> => {
       object: 'list',
       data: [
         {
-          id: config.glmModel,
-          display_name: config.glmModel,
+          id: config.modelId,
+          display_name: config.modelId,
           type: 'model',
           created_at: new Date().toISOString(),
         },

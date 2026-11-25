@@ -1,6 +1,12 @@
 import { config } from './config.js'
+import { streamOpenAIChat } from './adapters/openai-chat.js'
+import { streamOpenAIResponses } from './adapters/openai-responses.js'
 
-/** GLM Anthropic 兼容端点的流式调用与 SSE 解析 */
+/**
+ * 上游模型调用层：Agent 循环内部统一使用 Anthropic 消息/事件形态，
+ * 由协议适配器负责「Anthropic 形态 ⇄ 各厂商协议」的双向转换。
+ * 协议与端点在 .env 配置：MODEL_PROTOCOL + MODEL_ENDPOINT。
+ */
 
 export class UpstreamError extends Error {
   constructor(
@@ -12,10 +18,24 @@ export class UpstreamError extends Error {
   }
 }
 
-type StreamEvent = Record<string, unknown> & { type: string }
+/** Agent 内部的统一事件（Anthropic 流式事件形态） */
+export type StreamEvent = Record<string, unknown> & { type: string }
 
-/** 简化版 SSE 解析：按空行分帧，取 event 与 data 字段（与上游帧格式一致） */
-const parseSseFrames = (chunk: string, buffer: { text: string }): { event: string; data: string }[] => {
+/** Agent 内部的统一请求（Anthropic Messages 形态） */
+export type UpstreamRequest = {
+  model: string
+  system: string
+  messages: { role: 'user' | 'assistant'; content: unknown }[]
+  thinking?: Record<string, unknown>
+  tools?: unknown[]
+  max_tokens?: number
+}
+
+/** 简化版 SSE 解析：按空行分帧，取 event 与 data 字段 */
+export const parseSseFrames = (
+  chunk: string,
+  buffer: { text: string }
+): { event: string; data: string }[] => {
   buffer.text += chunk
   const frames: { event: string; data: string }[] = []
   const parts = buffer.text.split(/\r?\n\r?\n/)
@@ -40,41 +60,36 @@ const parseSseFrames = (chunk: string, buffer: { text: string }): { event: strin
   return frames
 }
 
-/**
- * 调 GLM /anthropic/v1/messages（stream: true），逐个产出解析后的事件对象。
- * 非 2xx 或流中 error 帧抛 UpstreamError；signal 中止时向上传播 AbortError。
- */
-export const streamUpstream = async (
-  body: Record<string, unknown>,
+/** 发起流式 POST，逐帧回调 data 文本；非 2xx 抛 UpstreamError */
+export const postSse = async (
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
   signal: AbortSignal,
-  onEvent: (event: StreamEvent) => void
+  onFrame: (data: string) => void
 ): Promise<void> => {
-  const messagesUrl = `${config.upstreamRoot}/anthropic/v1/messages`
   let response: Response
   try {
-    response = await fetch(messagesUrl, {
+    response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'x-api-key': config.glmApiKey,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify({ ...body, stream: true }),
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...headers },
+      body: JSON.stringify(body),
       signal,
     })
   } catch (error) {
     if (signal.aborted) {
       throw error
     }
-    throw new UpstreamError(502, `无法连接 GLM 上游：${error instanceof Error ? error.message : String(error)}`)
+    throw new UpstreamError(502, `无法连接模型上游（${url}）：${error instanceof Error ? error.message : String(error)}`)
   }
   if (!response.ok) {
     const text = await response.text().catch(() => '')
     let message = text || response.statusText
     try {
-      const parsed = JSON.parse(text) as { error?: { message?: string } }
-      if (parsed.error?.message) {
-        message = parsed.error.message
+      const parsed = JSON.parse(text) as { error?: { message?: string } | string }
+      const inner = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message
+      if (inner) {
+        message = inner
       }
     } catch {
       // 非 JSON 错误体直接展示原文
@@ -82,7 +97,7 @@ export const streamUpstream = async (
     throw new UpstreamError(response.status, message)
   }
   if (!response.body) {
-    throw new UpstreamError(502, 'GLM 上游未返回响应体')
+    throw new UpstreamError(502, '模型上游未返回响应体')
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -94,27 +109,59 @@ export const streamUpstream = async (
         return
       }
       for (const frame of parseSseFrames(decoder.decode(value, { stream: true }), buffer)) {
-        let payload: unknown
-        try {
-          payload = JSON.parse(frame.data)
-        } catch {
-          continue
-        }
-        if (!payload || typeof payload !== 'object') {
-          continue
-        }
-        const event = payload as StreamEvent
-        if (event.type === 'error') {
-          const message =
-            (event.error as { message?: string } | undefined)?.message ?? frame.data
-          throw new UpstreamError(502, `GLM 流式错误：${message}`)
-        }
-        onEvent(event)
+        onFrame(frame.data)
       }
     }
   } finally {
     if (!signal.aborted) {
       reader.cancel().catch(() => {})
     }
+  }
+}
+
+/** Anthropic Messages 协议：请求原样，SSE 事件解析后直接透传 */
+const streamAnthropic = async (
+  body: UpstreamRequest,
+  signal: AbortSignal,
+  onEvent: (event: StreamEvent) => void
+): Promise<void> => {
+  await postSse(
+    config.modelEndpoint,
+    { 'x-api-key': config.modelApiKey, Authorization: `Bearer ${config.modelApiKey}` },
+    { ...body, stream: true },
+    signal,
+    (data) => {
+      let payload: unknown
+      try {
+        payload = JSON.parse(data)
+      } catch {
+        return
+      }
+      if (!payload || typeof payload !== 'object') {
+        return
+      }
+      const event = payload as StreamEvent
+      if (event.type === 'error') {
+        const message = (event.error as { message?: string } | undefined)?.message ?? data
+        throw new UpstreamError(502, `模型流式错误：${message}`)
+      }
+      onEvent(event)
+    }
+  )
+}
+
+/** 统一入口：按 .env 的 MODEL_PROTOCOL 分发到对应适配器 */
+export const streamUpstream = async (
+  body: UpstreamRequest,
+  signal: AbortSignal,
+  onEvent: (event: StreamEvent) => void
+): Promise<void> => {
+  switch (config.modelProtocol) {
+    case 'openai-chat':
+      return streamOpenAIChat(body, signal, onEvent)
+    case 'openai-responses':
+      return streamOpenAIResponses(body, signal, onEvent)
+    default:
+      return streamAnthropic(body, signal, onEvent)
   }
 }

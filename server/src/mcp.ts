@@ -83,10 +83,36 @@ type SiteOperation = {
   result?: unknown
   state?: string
   error?: { message?: string } | string
+  /**
+   * 现场结果序列化后超过 12000 字符时，中继不再返回 result，而是把结果 JSON 文本切片分页返回；
+   * 此时须按 nextArguments 续取，全部拼完才能解析（实测 83 人批量测算的 3 条查询因此取不到结果）
+   */
+  resultPage?: { content?: string; offset?: number; nextOffset?: number; hasMore?: boolean }
+  nextArguments?: Record<string, unknown>
 }
 
 const opError = (op: SiteOperation): string =>
   typeof op.error === 'string' ? op.error : (op.error?.message ?? `状态 ${op.state ?? '未知'}`)
+
+/** 续取并拼接分页结果：resultPage.content 是现场结果 JSON 文本的切片，按 offset 顺序拼完再解析 */
+const stitchResult = async (first: SiteOperation): Promise<unknown> => {
+  let text = ''
+  let page = first.resultPage
+  let next = first.nextArguments
+  // 上限防御：200 页约 240 万字符，正常结果到不了；到不了却仍在续页说明中继分页异常
+  for (let guard = 0; page?.content && guard < 200; guard += 1) {
+    text += page.content
+    const offset = next?.offset
+    // 没有下一页、或偏移量不再前进，即停止
+    if (!page.hasMore || typeof offset !== 'number' || offset <= (page.offset ?? -1)) {
+      break
+    }
+    const more = await callTool<SiteOperation>('get_site_tool_operation', next as Record<string, unknown>)
+    page = more.resultPage
+    next = more.nextArguments
+  }
+  return JSON.parse(text) as unknown
+}
 
 /**
  * 经总台中继执行现场平台原生工具（两步异步）：
@@ -120,7 +146,10 @@ export const runSiteTool = async (
   if (!op.success) {
     throw new Error(`现场工具 ${nativeTool} 执行失败：${opError(op)}`)
   }
-  return op.result
+  if (op.result !== undefined) {
+    return op.result
+  }
+  return op.resultPage ? stitchResult(op) : undefined
 }
 
 /** 启动自检：一条无害查询验证链路（鉴权、网络、中继、数据源） */
