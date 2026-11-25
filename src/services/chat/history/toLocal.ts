@@ -1,3 +1,4 @@
+import { isWebUrl } from '../../../utils/url.js'
 import type {
   ServerToolUseBlock,
   WebFetchResult,
@@ -23,15 +24,6 @@ export type LocalSession = {
 }
 
 const time = (value: string) => Date.parse(value)
-
-/** 链接会渲染成 href，只接受 HTTP / HTTPS。 */
-const isWebUrl = (value: string) => {
-  try {
-    return ['http:', 'https:'].includes(new URL(value).protocol)
-  } catch {
-    return false
-  }
-}
 
 const toFile = (file: FileEntry): FileAttachment => ({
   id: file.id,
@@ -244,7 +236,7 @@ const toAssistant = (message: ChatMessage): AssistantMessage => {
  * current_message_id 到根的路径为当前分支；其余节点默认选中 id 最大的子消息。
  */
 const buildTree = (file: SessionFile): Pick<Session, 'messages' | 'rootMessageId'> => {
-  const sorted = file.messages.toSorted((a, b) => a.id - b.id)
+  const sorted = [...file.messages].sort((a, b) => a.id - b.id)
   const byId = new Map<number, Message>()
   const messages = sorted.map((message) => {
     const { id, parent_id } = message
